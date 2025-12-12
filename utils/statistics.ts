@@ -1,4 +1,4 @@
-import { LogAcao, Jogador, Periodo } from "@/types/game";
+import { LogAcao, Jogador, Periodo } from "../types/game";
 
 export interface PlayerStats {
   nome: string;
@@ -7,9 +7,12 @@ export interface PlayerStats {
   rebotes: number;
   assistencias: number;
   faltas: number;
-  fgMade: number; fgAttempt: number;
-  threeMade: number; threeAttempt: number;
-  ftMade: number; ftAttempt: number;
+  fgMade: number; 
+  fgAttempt: number;
+  threeMade: number; 
+  threeAttempt: number;
+  ftMade: number; 
+  ftAttempt: number;
 }
 
 export function calcularEstatisticas(jogador: Jogador, logs: LogAcao[]): PlayerStats {
@@ -47,6 +50,7 @@ export function calcularEstatisticas(jogador: Jogador, logs: LogAcao[]): PlayerS
     else if (acao.tipo === '3PT') {
       stats.fgAttempt++;
       stats.threeAttempt++;
+      
       if (acao.resultado === 'ACERTO') {
         stats.fgMade++;
         stats.threeMade++;
@@ -54,10 +58,10 @@ export function calcularEstatisticas(jogador: Jogador, logs: LogAcao[]): PlayerS
       }
     }
 
-    else if (acao.tipo === 'REB_DEF' || acao.tipo === 'REB_OFF') {
+    else if (acao.tipo === 'REBOTE') {
       stats.rebotes++;
     }
-    else if (acao.tipo === 'AST') {
+    else if (acao.tipo === 'ASSISTENCIA') {
       stats.assistencias++;
     }
     else if (acao.tipo === 'FALTA') {
@@ -69,17 +73,19 @@ export function calcularEstatisticas(jogador: Jogador, logs: LogAcao[]): PlayerS
 }
 
 export function calcularPontosPorQuarto(jogador: Jogador, logs: LogAcao[]) {
-  const porQuarto = { 1: 0, 2: 0, 3: 0, 4: 0, OT: 0 };
+  const porQuarto: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
   
   logs
     .filter(l => l.jogadorId === jogador.id && l.resultado === 'ACERTO')
     .forEach(l => {
       let pts = 0;
       if (l.tipo === '1PT') pts = 1;
-      if (l.tipo === '2PT') pts = 2;
-      if (l.tipo === '3PT') pts = 3;
+      else if (l.tipo === '2PT') pts = 2;
+      else if (l.tipo === '3PT') pts = 3;
       
-      if (porQuarto[l.periodo] !== undefined) porQuarto[l.periodo] += pts;
+      if (porQuarto[l.periodo] !== undefined) {
+        porQuarto[l.periodo] += pts;
+      }
     });
 
   return porQuarto;

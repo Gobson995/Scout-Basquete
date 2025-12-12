@@ -2,23 +2,17 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { FileDown, Trash2, Undo2 } from "lucide-react";
+import { FileDown, Trash2, Undo2, UserPlus, Users, Trophy } from "lucide-react";
 import { Scoreboard } from "./components/Scoreboard";
 import { PlayerManager } from "./components/PlayerManager";
 import { ActionMenu } from "./components/ActionMenu";
-import { Periodo, Jogador, LogAcao, TipoAcao } from "../types/game";
+import { Periodo, Jogador, LogAcao, HistoricoItem, TipoAcao } from "../types/game"; 
 import { gerarPDF } from "../utils/pdfGenerator";
-
-// --- TIPOS PARA O HISTÓRICO GLOBAL ---
-// Isso permite saber se a última ação foi do Jogador ou do Placar Adversário
-type HistoricoItem = 
-  | { tipo: 'JOGADOR'; logId: string }
-  | { tipo: 'ADVERSARIO'; valor: number };
 
 interface GameState {
   jogadores: Jogador[];
   logs: LogAcao[];
-  historico: HistoricoItem[]; // NOVO: Guarda a ordem dos fatos
+  historico: HistoricoItem[];
   placarAdv: number;
   periodo: Periodo;
 }
@@ -31,13 +25,11 @@ const INITIAL_STATE: GameState = {
   periodo: 1
 };
 
-// --- HOOK DE LÓGICA (CONTROLADOR) ---
 function useGameScout() {
   const [game, setGame] = useState<GameState>(INITIAL_STATE);
   const [isReady, setIsReady] = useState(false);
   const isFirstRender = useRef(true);
 
-  // 1. CARREGAR
   useEffect(() => {
     const timer = setTimeout(() => {
         const dadosSalvos = localStorage.getItem('scout_backup_v1');
@@ -47,39 +39,23 @@ function useGameScout() {
             setGame({
               jogadores: Array.isArray(parsed.jogadores) ? parsed.jogadores : [],
               logs: Array.isArray(parsed.logs) ? parsed.logs : [],
-              historico: Array.isArray(parsed.historico) ? parsed.historico : [], // Carrega histórico
+              historico: Array.isArray(parsed.historico) ? parsed.historico : [],
               placarAdv: typeof parsed.placarAdv === 'number' ? parsed.placarAdv : 0,
               periodo: parsed.periodo || 1
             });
-          } catch (e) {
-            console.error("Erro ao carregar save:", e);
-          }
+          } catch (e) { console.error("Erro ao carregar:", e); }
         }
         setIsReady(true);
     }, 0);
-
     return () => clearTimeout(timer);
   }, []);
 
-  // 2. SALVAR
   useEffect(() => {
     if (!isReady) return;
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-
-    const backup = { 
-      jogadores: game.jogadores, 
-      logs: game.logs, 
-      historico: game.historico, // Salva histórico
-      placarAdv: game.placarAdv, 
-      periodo: game.periodo 
-    };
-    localStorage.setItem('scout_backup_v1', JSON.stringify(backup));
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    localStorage.setItem('scout_backup_v1', JSON.stringify(game));
   }, [game, isReady]); 
 
-  // --- LÓGICA DE NEGÓCIO ---
   const placarMeus = game.logs.reduce((total, acao) => {
     if (acao.resultado === 'ACERTO') {
       if (acao.tipo === '3PT') return total + 3;
@@ -95,20 +71,16 @@ function useGameScout() {
   };
 
   const removerJogador = (id: string) => {
-    if (window.confirm("Tem certeza?")) {
-      setGame(prev => ({ 
-        ...prev, 
-        jogadores: prev.jogadores.filter(j => j.id !== id) 
-      }));
+    if (window.confirm("Remover jogador?")) {
+      setGame(prev => ({ ...prev, jogadores: prev.jogadores.filter(j => j.id !== id) }));
     }
   };
 
-  // Registra ação do MEU time e adiciona no histórico global
   const registrarAcao = (jogadorId: string, tipo: string, resultado: 'ACERTO' | 'ERRO' | 'NEUTRO') => {
     const novaAcao: LogAcao = {
       id: uuidv4(),
       jogadorId,
-      tipo: tipo as TipoAcao,
+      tipo: tipo as TipoAcao, 
       resultado,
       periodo: game.periodo,
       timestamp: Date.now()
@@ -121,7 +93,6 @@ function useGameScout() {
     }));
   };
 
-  // Registra pontos do ADVERSÁRIO e adiciona no histórico global
   const incrementarPlacarAdv = (pontos: number) => {
     setGame(prev => ({ 
       ...prev, 
@@ -130,32 +101,26 @@ function useGameScout() {
     }));
   };
 
-  // --- NOVA LÓGICA DE DESFAZER INTELIGENTE ---
   const desfazerUltimaAcao = () => {
     setGame(prev => {
-      if (prev.historico.length === 0) return prev; // Nada para desfazer
-
-      const novoHistorico = [...prev.historico];
-      const ultimoEvento = novoHistorico.pop(); // Pega e remove o último evento
-
-      // CASO 1: A última ação foi de um JOGADOR (Meu time)
-      if (ultimoEvento?.tipo === 'JOGADOR') {
-        return {
-          ...prev,
-          historico: novoHistorico,
-          logs: prev.logs.filter(log => log.id !== ultimoEvento.logId) // Remove o log específico
-        };
-      } 
+      if (prev.historico.length === 0) return prev;
       
-      // CASO 2: A última ação foi PONTO DO ADVERSÁRIO
-      else if (ultimoEvento?.tipo === 'ADVERSARIO') {
-        return {
-          ...prev,
-          historico: novoHistorico,
-          placarAdv: Math.max(0, prev.placarAdv - ultimoEvento.valor) // Subtrai os pontos exatos
+      const novoHistorico = [...prev.historico];
+      const ultimoEvento = novoHistorico.pop();
+
+      if (ultimoEvento?.tipo === 'JOGADOR') {
+        return { 
+          ...prev, 
+          historico: novoHistorico, 
+          logs: prev.logs.filter(log => log.id !== ultimoEvento.logId) 
+        };
+      } else if (ultimoEvento?.tipo === 'ADVERSARIO') {
+        return { 
+          ...prev, 
+          historico: novoHistorico, 
+          placarAdv: Math.max(0, prev.placarAdv - ultimoEvento.valor) 
         };
       }
-
       return prev;
     });
   };
@@ -171,14 +136,14 @@ function useGameScout() {
   };
 
   const resetarJogo = () => {
-    if (window.confirm("Deseja iniciar um novo jogo?")) {
+    if (window.confirm("Reiniciar jogo? Todos os dados serão perdidos.")) {
       localStorage.removeItem('scout_backup_v1');
       setGame(INITIAL_STATE);
     }
   };
 
-  return {
-    state: { ...game, placarMeus, isReady },
+  return { 
+    state: { ...game, placarMeus, isReady }, 
     actions: { 
       adicionarJogador, 
       removerJogador, 
@@ -187,20 +152,17 @@ function useGameScout() {
       trocarQuarto, 
       incrementarPlacarAdv, 
       resetarJogo 
-    }
+    } 
   };
 }
 
-// --- COMPONENTE VISUAL ---
 export default function ScoutPage() {
   const { state, actions } = useGameScout();
   const [jogadorSelecionado, setJogadorSelecionado] = useState<Jogador | null>(null);
+  const [showPlayerManager, setShowPlayerManager] = useState(false);
 
   const handleDownload = () => {
-    if (state.logs.length === 0) {
-      alert("Sem dados para gerar relatório.");
-      return;
-    }
+    if (state.logs.length === 0) { alert("Sem dados."); return; }
     gerarPDF(state.jogadores, state.logs, state.placarMeus, state.placarAdv);
   };
 
@@ -213,115 +175,156 @@ export default function ScoutPage() {
 
   if (!state.isReady) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-100 text-slate-400 font-medium">
-        Carregando...
+      <div className="flex h-screen items-center justify-center bg-slate-900 text-white font-medium">
+        Carregando App...
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 pb-32 font-sans text-slate-800">
-      
-      <div className="max-w-md mx-auto p-4 flex flex-col h-full">
-        
-        <header className="mb-4">
-          <Scoreboard 
-            myScore={state.placarMeus} 
-            opponentScore={state.placarAdv} 
-            period={state.periodo}
-            onChangePeriod={actions.trocarQuarto}
-          />
-        </header>
-
-        <section aria-label="Jogadores">
-          <div className="mb-2 flex justify-between items-end px-1">
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Jogadores</h2>
-            <span className="text-[10px] text-slate-400">Toque para pontuar</span>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-32">
+      <div className="bg-slate-900 pb-8 pt-4 px-4 rounded-b-[2rem] shadow-xl mb-6">
+        <div className="max-w-md mx-auto">
+          <div className="text-white">
+             <Scoreboard 
+                myScore={state.placarMeus} 
+                opponentScore={state.placarAdv} 
+                period={state.periodo}
+                onChangePeriod={actions.trocarQuarto}
+              />
           </div>
-          
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {state.jogadores.map(jogador => {
-              const acertos = state.logs.filter(l => l.jogadorId === jogador.id && l.resultado === 'ACERTO').length;
-              
-              return (
-                <button
-                  key={jogador.id}
-                  onClick={() => setJogadorSelecionado(jogador)}
-                  className="group relative bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex items-center gap-3 transition-all active:scale-95 hover:border-blue-400 hover:shadow-md"
-                >
-                  <span className="bg-slate-800 text-white w-10 h-10 flex items-center justify-center rounded-full font-bold text-lg shadow-sm group-hover:bg-blue-600 transition-colors">
-                    {jogador.numero}
-                  </span>
-                  <div className="text-left overflow-hidden w-full">
-                    <div className="font-bold text-slate-800 truncate text-sm">{jogador.nome}</div>
-                    <div className="text-[10px] text-slate-400 font-medium">
-                      {acertos} {acertos === 1 ? 'pt' : 'pts'}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <PlayerManager 
-            players={state.jogadores}
-            onAddPlayer={actions.adicionarJogador}
-            onRemovePlayer={actions.removerJogador}
-          />
-        </section>
-
-        <section aria-label="Adversário" className="mt-6 mb-8">
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <h2 className="text-xs font-bold text-slate-400 uppercase mb-3 text-center tracking-wide">
-              Placar Adversário
-            </h2>
-            <div className="flex gap-2">
-              {[1, 2, 3].map((val) => (
-                <button 
-                  key={val}
-                  onClick={() => actions.incrementarPlacarAdv(val)} 
-                  className="flex-1 bg-red-50 text-red-600 font-bold py-3 rounded-lg border border-red-100 active:bg-red-100 transition-colors hover:bg-red-100"
-                >
-                  +{val}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
+        </div>
       </div>
 
-      {/* --- FOOTER --- */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t border-slate-200 z-10">
-        <div className="max-w-md mx-auto flex gap-3 justify-center items-center">
+      <div className="max-w-md mx-auto px-4 space-y-6">
+
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+          <div className="flex justify-between items-center mb-3">
+             <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest flex items-center gap-2">
+               <Trophy size={14} /> Pontuar Adversário
+             </h3>
+          </div>
+          <div className="flex gap-3">
+             {[1, 2, 3].map(pts => (
+               <button
+                 key={pts}
+                 onClick={() => actions.incrementarPlacarAdv(pts)}
+                 className="flex-1 h-14 bg-red-50 text-red-600 rounded-xl font-black text-xl border-2 border-transparent active:border-red-200 active:scale-95 transition-all shadow-sm hover:shadow-md flex items-center justify-center"
+               >
+                 +{pts}
+               </button>
+             ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex justify-between items-end mb-3 px-1">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <Users size={14} /> Meu Time
+            </h3>
+            <button 
+              onClick={() => setShowPlayerManager(!showPlayerManager)}
+              className="text-xs text-blue-600 font-medium flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-lg active:bg-blue-100 transition-colors"
+            >
+              <UserPlus size={14} /> {showPlayerManager ? 'Fechar Gestão' : 'Gerenciar'}
+            </button>
+          </div>
+
+          {showPlayerManager && (
+            <div className="mb-4 bg-slate-100 p-3 rounded-xl animate-in fade-in slide-in-from-top-2">
+               <PlayerManager 
+                  players={state.jogadores}
+                  onAddPlayer={actions.adicionarJogador}
+                  onRemovePlayer={actions.removerJogador}
+               />
+            </div>
+          )}
           
-          <button
-            onClick={actions.resetarJogo}
-            className="flex flex-col items-center justify-center text-slate-400 hover:text-red-500 px-3 transition-colors p-2 rounded-lg hover:bg-red-50"
-            title="Resetar"
-          >
-            <Trash2 size={20} />
-            <span className="text-[10px] font-bold mt-1">Reset</span>
-          </button>
+          {state.jogadores.length === 0 ? (
+            <div className="text-center p-8 border-2 border-dashed border-slate-300 rounded-2xl text-slate-400">
+               <p>Nenhum jogador cadastrado.</p>
+               <p className="text-xs mt-1">Toque em Gerenciar para adicionar.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {state.jogadores.map(jogador => {
+                const pontos = state.logs
+                  .filter(l => l.jogadorId === jogador.id && l.resultado === 'ACERTO')
+                  .reduce((acc, curr) => {
+                    if (curr.tipo === '3PT') return acc + 3;
+                    if (curr.tipo === '2PT') return acc + 2;
+                    return acc + 1;
+                  }, 0);
 
-          <button
-            onClick={actions.desfazerUltimaAcao}
-            disabled={state.historico.length === 0} // Desabilita se não tiver histórico
-            className={`flex flex-col items-center justify-center px-3 transition-colors p-2 rounded-lg
-              ${state.historico.length === 0 ? 'text-slate-300' : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50'}
-            `}
-            title="Desfazer última ação"
-          >
-            <Undo2 size={24} />
-            <span className="text-[10px] font-bold mt-1">Desfazer</span>
-          </button>
+                const faltas = state.logs.filter(l => l.jogadorId === jogador.id && l.tipo === 'FALTA').length;
 
-          <button
-            onClick={handleDownload}
-            className="bg-slate-900 text-white flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 active:scale-95 transition-all"
-          >
-            <FileDown size={20} />
-            <span>Baixar PDF</span>
-          </button>
+                return (
+                  <button
+                    key={jogador.id}
+                    onClick={() => setJogadorSelecionado(jogador)}
+                    className={`
+                      relative flex flex-col p-3 rounded-2xl border-2 transition-all active:scale-95 shadow-sm hover:shadow-md bg-white text-left
+                      ${faltas >= 4 ? 'border-red-100 bg-red-50' : 'border-transparent'}
+                    `}
+                  >
+                    <div className="flex justify-between items-start w-full mb-2">
+                       <span className={`
+                         text-lg font-black w-10 h-10 flex items-center justify-center rounded-full shadow-sm
+                         ${faltas >= 5 ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-700'}
+                       `}>
+                         {jogador.numero}
+                       </span>
+                       <div className="text-right">
+                         <span className="block text-2xl font-bold text-slate-800 leading-none">{pontos}</span>
+                         <span className="text-[10px] text-slate-400 uppercase font-bold">PTS</span>
+                       </div>
+                    </div>
+                    
+                    <div className="w-full overflow-hidden">
+                       <p className="font-bold text-slate-700 truncate text-sm">{jogador.nome}</p>
+                       {faltas > 0 && (
+                         <p className="text-[10px] text-red-500 font-bold mt-1">{faltas} Faltas</p>
+                       )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 p-4 z-50">
+        <div className="max-w-md mx-auto bg-slate-900/90 backdrop-blur-md text-white rounded-2xl p-2 shadow-2xl flex items-center justify-between border border-slate-700/50">
+           
+           <button 
+             onClick={actions.resetarJogo}
+             className="flex flex-col items-center justify-center w-16 h-14 rounded-xl active:bg-white/10 transition-colors text-slate-400 hover:text-red-400"
+           >
+             <Trash2 size={20} />
+             <span className="text-[9px] mt-1 font-bold">Reset</span>
+           </button>
+
+           <div className="h-8 w-[1px] bg-slate-700"></div>
+
+           <button 
+             onClick={actions.desfazerUltimaAcao}
+             disabled={state.historico.length === 0}
+             className={`flex flex-col items-center justify-center w-16 h-14 rounded-xl active:bg-white/10 transition-colors
+               ${state.historico.length === 0 ? 'opacity-30' : 'opacity-100 text-blue-400'}
+             `}
+           >
+             <Undo2 size={24} />
+             <span className="text-[9px] mt-1 font-bold">Desfazer</span>
+           </button>
+
+           <button 
+             onClick={handleDownload}
+             className="ml-2 flex-1 h-12 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform"
+           >
+             <FileDown size={18} />
+             <span>PDF</span>
+           </button>
         </div>
       </div>
 
@@ -332,6 +335,6 @@ export default function ScoutPage() {
           onClose={() => setJogadorSelecionado(null)}
         />
       )}
-    </main>
+    </div>
   );
 }

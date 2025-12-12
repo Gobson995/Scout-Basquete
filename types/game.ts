@@ -1,23 +1,19 @@
-// types/game.ts
+export type Periodo = 1 | 2 | 3 | 4;
 
-// Aqui definimos os 4 quartos e a prorrogação (OT)
-export type Periodo = 1 | 2 | 3 | 4 | 'OT';
-
-// Aqui listamos todas as ações possíveis no jogo
 export type TipoAcao = 
-  | '1PT'       // Lance Livre
-  | '2PT'       // 2 Pontos
-  | '3PT'       // 3 Pontos
-  | 'REB_DEF'   // Rebote Defensivo
-  | 'REB_OFF'   // Rebote Ofensivo
-  | 'AST'       // Assistência
-  | 'STL'       // Roubo de bola
-  | 'BLK'       // Toco
-  | 'TO'        // Turnover (Erro)
-  | 'FALTA';    // Falta Pessoal
+  | '3PT' 
+  | '2PT' 
+  | '1PT' 
+  | 'FALTA' 
+  | 'REBOTE' 
+  | 'ASSISTENCIA' 
+  | 'TOCO' 
+  | 'ROUBO';
+
+export type ResultadoAcao = 'ACERTO' | 'ERRO' | 'NEUTRO';
 
 export interface Jogador {
-  id: string; 
+  id: string;
   nome: string;
   numero: number;
   titular: boolean;
@@ -27,7 +23,11 @@ export interface LogAcao {
   id: string;
   jogadorId: string;
   tipo: TipoAcao;
-  resultado: 'ACERTO' | 'ERRO' | 'NEUTRO';
+  resultado: ResultadoAcao;
   periodo: Periodo;
   timestamp: number;
 }
+
+export type HistoricoItem = 
+  | { tipo: 'JOGADOR'; logId: string }
+  | { tipo: 'ADVERSARIO'; valor: number };
