@@ -5,6 +5,8 @@ export interface PlayerStats {
   numero: number;
   pontos: number;
   rebotes: number;
+  rebotesDef: number;
+  rebotesOf: number;
   assistencias: number;
   faltas: number;
   fgMade: number; 
@@ -23,6 +25,8 @@ export function calcularEstatisticas(jogador: Jogador, logs: LogAcao[]): PlayerS
     numero: jogador.numero,
     pontos: 0,
     rebotes: 0,
+    rebotesDef: 0,
+    rebotesOf: 0,
     assistencias: 0,
     faltas: 0,
     fgMade: 0, fgAttempt: 0,
@@ -58,7 +62,12 @@ export function calcularEstatisticas(jogador: Jogador, logs: LogAcao[]): PlayerS
       }
     }
 
-    else if (acao.tipo === 'REBOTE') {
+    else if (acao.tipo === 'REBOTE_DEF') {
+      stats.rebotesDef++;
+      stats.rebotes++;
+    }
+    else if (acao.tipo === 'REBOTE_OF') {
+      stats.rebotesOf++;
       stats.rebotes++;
     }
     else if (acao.tipo === 'ASSISTENCIA') {
