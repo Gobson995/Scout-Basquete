@@ -5,10 +5,12 @@ export type TipoAcao =
   | '2PT' 
   | '1PT' 
   | 'FALTA' 
-  | 'REBOTE' 
+  | 'REBOTE_DEF'
+  | 'REBOTE_OF' 
   | 'ASSISTENCIA' 
   | 'TOCO' 
-  | 'ROUBO';
+  | 'ROUBO'
+  | 'TURNOVER';
 
 export type ResultadoAcao = 'ACERTO' | 'ERRO' | 'NEUTRO';
 
@@ -31,3 +33,17 @@ export interface LogAcao {
 export type HistoricoItem = 
   | { tipo: 'JOGADOR'; logId: string }
   | { tipo: 'ADVERSARIO'; valor: number };
+
+export interface GameState {
+  jogadores: Jogador[];
+  logs: LogAcao[];
+  placarAdversario: number;
+  periodo: Periodo;
+  historico: HistoricoItem[];
+  info: {
+    timeCasa: string;
+    timeAdversario: string;
+    campeonato: string;
+    data: string;
+  };
+}

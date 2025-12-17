@@ -6,23 +6,21 @@ import { FileDown, Trash2, Undo2, UserPlus, Users, Trophy } from "lucide-react";
 import { Scoreboard } from "./components/Scoreboard";
 import { PlayerManager } from "./components/PlayerManager";
 import { ActionMenu } from "./components/ActionMenu";
-import { Periodo, Jogador, LogAcao, HistoricoItem, TipoAcao } from "../types/game"; 
+import { Periodo, Jogador, LogAcao, GameState, TipoAcao } from "../types/game"; 
 import { gerarPDF } from "../utils/pdfGenerator";
-
-interface GameState {
-  jogadores: Jogador[];
-  logs: LogAcao[];
-  historico: HistoricoItem[];
-  placarAdv: number;
-  periodo: Periodo;
-}
 
 const INITIAL_STATE: GameState = {
   jogadores: [],
   logs: [],
   historico: [],
-  placarAdv: 0,
-  periodo: 1
+  placarAdversario: 0,
+  periodo: 1,
+  info: {
+    timeCasa: "Meu Time",
+    timeAdversario: "Visitante",
+    campeonato: "Amistoso",
+    data: new Date().toISOString().split('T')[0]
+  }
 };
 
 function useGameScout() {
@@ -40,8 +38,9 @@ function useGameScout() {
               jogadores: Array.isArray(parsed.jogadores) ? parsed.jogadores : [],
               logs: Array.isArray(parsed.logs) ? parsed.logs : [],
               historico: Array.isArray(parsed.historico) ? parsed.historico : [],
-              placarAdv: typeof parsed.placarAdv === 'number' ? parsed.placarAdv : 0,
-              periodo: parsed.periodo || 1
+              placarAdversario: parsed.placarAdversario || parsed.placarAdv || 0,
+              periodo: parsed.periodo || 1,
+              info: parsed.info || INITIAL_STATE.info
             });
           } catch (e) { console.error("Erro ao carregar:", e); }
         }
@@ -55,6 +54,13 @@ function useGameScout() {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     localStorage.setItem('scout_backup_v1', JSON.stringify(game));
   }, [game, isReady]); 
+
+  const atualizarInfo = (campo: keyof GameState['info'], valor: string) => {
+    setGame(prev => ({
+      ...prev,
+      info: { ...prev.info, [campo]: valor }
+    }));
+  };
 
   const placarMeus = game.logs.reduce((total, acao) => {
     if (acao.resultado === 'ACERTO') {
@@ -96,7 +102,7 @@ function useGameScout() {
   const incrementarPlacarAdv = (pontos: number) => {
     setGame(prev => ({ 
       ...prev, 
-      placarAdv: prev.placarAdv + pontos,
+      placarAdversario: prev.placarAdversario + pontos,
       historico: [...prev.historico, { tipo: 'ADVERSARIO', valor: pontos }]
     }));
   };
@@ -104,7 +110,6 @@ function useGameScout() {
   const desfazerUltimaAcao = () => {
     setGame(prev => {
       if (prev.historico.length === 0) return prev;
-      
       const novoHistorico = [...prev.historico];
       const ultimoEvento = novoHistorico.pop();
 
@@ -118,7 +123,7 @@ function useGameScout() {
         return { 
           ...prev, 
           historico: novoHistorico, 
-          placarAdv: Math.max(0, prev.placarAdv - ultimoEvento.valor) 
+          placarAdversario: Math.max(0, prev.placarAdversario - ultimoEvento.valor) 
         };
       }
       return prev;
@@ -145,13 +150,9 @@ function useGameScout() {
   return { 
     state: { ...game, placarMeus, isReady }, 
     actions: { 
-      adicionarJogador, 
-      removerJogador, 
-      registrarAcao, 
-      desfazerUltimaAcao, 
-      trocarQuarto, 
-      incrementarPlacarAdv, 
-      resetarJogo 
+      adicionarJogador, removerJogador, registrarAcao, 
+      desfazerUltimaAcao, trocarQuarto, incrementarPlacarAdv, 
+      resetarJogo, atualizarInfo 
     } 
   };
 }
@@ -163,7 +164,7 @@ export default function ScoutPage() {
 
   const handleDownload = () => {
     if (state.logs.length === 0) { alert("Sem dados."); return; }
-    gerarPDF(state.jogadores, state.logs, state.placarMeus, state.placarAdv);
+    gerarPDF(state.jogadores, state.logs, state.placarMeus, state.placarAdversario, state.info);
   };
 
   const handleAction = (tipo: string, resultado: 'ACERTO' | 'ERRO' | 'NEUTRO') => {
@@ -173,25 +174,55 @@ export default function ScoutPage() {
     }
   };
 
-  if (!state.isReady) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-900 text-white font-medium">
-        Carregando App...
-      </div>
-    );
-  }
+  if (!state.isReady) return <div className="flex h-screen items-center justify-center bg-slate-900 text-white">Carregando...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-32">
       <div className="bg-slate-900 pb-8 pt-4 px-4 rounded-b-[2rem] shadow-xl mb-6">
         <div className="max-w-md mx-auto">
+          
+          {/* PAINEL DE EDIÇÃO DE INFO */}
+          <div className="bg-slate-800/50 p-3 rounded-xl mb-4 border border-slate-700">
+             <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="col-span-2">
+                   <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Campeonato</label>
+                   <input 
+                      type="text" 
+                      value={state.info.campeonato}
+                      onChange={(e) => actions.atualizarInfo('campeonato', e.target.value)}
+                      className="w-full bg-slate-900 text-white text-sm p-2 rounded border border-slate-600 focus:border-orange-500 outline-none"
+                   />
+                </div>
+             </div>
+             <div className="grid grid-cols-2 gap-3">
+                <div>
+                   <label className="text-[10px] text-blue-300 uppercase font-bold tracking-wider">Seu Time</label>
+                   <input 
+                      type="text" 
+                      value={state.info.timeCasa}
+                      onChange={(e) => actions.atualizarInfo('timeCasa', e.target.value)}
+                      className="w-full bg-slate-900 text-blue-100 font-bold text-sm p-2 rounded border border-slate-600 focus:border-blue-500 outline-none"
+                   />
+                </div>
+                <div>
+                   <label className="text-[10px] text-red-300 uppercase font-bold tracking-wider">Adversário</label>
+                   <input 
+                      type="text" 
+                      value={state.info.timeAdversario}
+                      onChange={(e) => actions.atualizarInfo('timeAdversario', e.target.value)}
+                      className="w-full bg-slate-900 text-red-100 font-bold text-sm p-2 rounded border border-slate-600 focus:border-red-500 outline-none"
+                   />
+                </div>
+             </div>
+          </div>
+
           <div className="text-white">
              <Scoreboard 
                 myScore={state.placarMeus} 
-                opponentScore={state.placarAdv} 
+                opponentScore={state.placarAdversario} 
                 period={state.periodo}
                 onChangePeriod={actions.trocarQuarto}
-              />
+             />
           </div>
         </div>
       </div>

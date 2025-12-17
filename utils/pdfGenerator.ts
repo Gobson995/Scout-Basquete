@@ -1,59 +1,129 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Jogador, LogAcao } from "@/types/game";
-import { calcularEstatisticas, calcularPontosPorQuarto } from "./statistics";
+import { Jogador, LogAcao } from "../types/game";
 
-export function gerarPDF(jogadores: Jogador[], logs: LogAcao[], placarMeus: number, placarAdv: number) {
-  const doc = new jsPDF();
+const formatarData = (dataIso: string) => {
+  if (!dataIso) return new Date().toLocaleDateString();
+  const [ano, mes, dia] = dataIso.split('-');
+  return `${dia}/${mes}/${ano}`;
+};
+
+export const gerarPDF = (
+  jogadores: Jogador[], 
+  logs: LogAcao[], 
+  placarMeus: number, 
+  placarAdv: number,
+  info?: { timeCasa: string; timeAdversario: string; campeonato: string; data: string }
+) => {
+  const doc = new jsPDF({ orientation: "landscape" });
 
   doc.setFontSize(18);
-  doc.text("Relatório de Jogo - Scout Basquete", 14, 20);
-  
+  doc.text("Relatório de Jogo - Scout Completo", 14, 20);
+
   doc.setFontSize(12);
-  doc.text(`Placar Final: Meu Time ${placarMeus} x ${placarAdv} Adversário`, 14, 30);
-  doc.text(`Data: ${new Date().toLocaleDateString()}`, 14, 36);
+  doc.setTextColor(100);
+  
+  const campeonato = info?.campeonato || "Amistoso";
+  const data = formatarData(info?.data || "");
+  const timeCasa = info?.timeCasa || "Meu Time";
+  const timeAdv = info?.timeAdversario || "Adversário";
+
+  doc.text(`${campeonato} - ${data}`, 14, 30);
+  
+  doc.setFontSize(16);
+  doc.setTextColor(0);
+  doc.text(`${timeCasa}  ${placarMeus}  x  ${placarAdv}  ${timeAdv}`, 14, 40);
 
   const dadosTabela = jogadores.map(jogador => {
-    const s = calcularEstatisticas(jogador, logs);
-    const q = calcularPontosPorQuarto(jogador, logs);
+    const logsJ = logs.filter(l => l.jogadorId === jogador.id);
+
+    const att3 = logsJ.filter(l => l.tipo === '3PT').length;
+    const made3 = logsJ.filter(l => l.tipo === '3PT' && l.resultado === 'ACERTO').length;
     
-    const fgPct = s.fgAttempt > 0 ? Math.round((s.fgMade / s.fgAttempt) * 100) : 0;
-    const threePct = s.threeAttempt > 0 ? Math.round((s.threeMade / s.threeAttempt) * 100) : 0;
-    const ftPct = s.ftAttempt > 0 ? Math.round((s.ftMade / s.ftAttempt) * 100) : 0;
+    const att2 = logsJ.filter(l => l.tipo === '2PT').length;
+    const made2 = logsJ.filter(l => l.tipo === '2PT' && l.resultado === 'ACERTO').length;
+
+    const att1 = logsJ.filter(l => l.tipo === '1PT').length;
+    const made1 = logsJ.filter(l => l.tipo === '1PT' && l.resultado === 'ACERTO').length;
+
+    const attFG = att2 + att3;
+    const madeFG = made2 + made3;
+
+    const pctFG = attFG > 0 ? Math.round((madeFG / attFG) * 100) : 0;
+    const pct3 = att3 > 0 ? Math.round((made3 / att3) * 100) : 0;
+    const pct1 = att1 > 0 ? Math.round((made1 / att1) * 100) : 0;
+
+    const strFG = `${madeFG}/${attFG} (${pctFG}%)`;
+    const str3PT = `${made3}/${att3} (${pct3}%)`;
+    const strLL = `${made1}/${att1} (${pct1}%)`;
+
+    const rebDef = logsJ.filter(l => l.tipo === 'REBOTE_DEF').length;
+    const rebOf = logsJ.filter(l => l.tipo === 'REBOTE_OF').length;
+    const ast = logsJ.filter(l => l.tipo === 'ASSISTENCIA').length;
+    const rou = logsJ.filter(l => l.tipo === 'ROUBO').length;
+    const toc = logsJ.filter(l => l.tipo === 'TOCO').length;
+    const err = logsJ.filter(l => l.tipo === 'TURNOVER').length;
+    const fal = logsJ.filter(l => l.tipo === 'FALTA').length;
+
+    const calcPontosPeriodo = (p: number) => {
+        const logsP = logsJ.filter(l => l.periodo === p && l.resultado === 'ACERTO');
+        return logsP.reduce((acc, curr) => {
+            if (curr.tipo === '3PT') return acc + 3;
+            if (curr.tipo === '2PT') return acc + 2;
+            return acc + 1;
+        }, 0);
+    };
+
+    const q1 = calcPontosPeriodo(1);
+    const q2 = calcPontosPeriodo(2);
+    const q3 = calcPontosPeriodo(3);
+    const q4 = calcPontosPeriodo(4);
+
+    const totalPontos = (made3 * 3) + (made2 * 2) + made1;
 
     return [
-      `#${s.numero} ${s.nome}`,
-      s.pontos,
-      `${s.fgMade}/${s.fgAttempt} (${fgPct}%)`,
-      `${s.threeMade}/${s.threeAttempt} (${threePct}%)`,
-      `${s.ftMade}/${s.ftAttempt} (${ftPct}%)`,
-      s.rebotes,
-      s.assistencias,
-      s.faltas,
-      q[1], q[2], q[3], q[4]
+      `#${jogador.numero} ${jogador.nome}`,
+      totalPontos,
+      strFG,
+      str3PT,
+      strLL,
+      rebDef,
+      rebOf,
+      ast,
+      rou,
+      toc,
+      err,
+      fal,
+      q1, q2, q3, q4
     ];
   });
 
   autoTable(doc, {
-    startY: 45,
+    startY: 50,
     head: [[
-      "Jogador", "PTS", "FG (Geral)", "3 Pontos", "L. Livre", "REB", "AST", "F", "1º", "2º", "3º", "4º"
+        'Jogador', 'PTS', 'FG (2+3)', '3 Pts', 'LL (1pt)', 
+        'RD', 'RO', 'AST', 'ROU', 'TOC', 'ER', 'F', 
+        'Q1', 'Q2', 'Q3', 'Q4'
     ]],
     body: dadosTabela,
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [41, 128, 185] },
+    headStyles: { 
+        fillColor: [41, 128, 185], 
+        halign: 'center',
+        fontSize: 8 
+    },
+    styles: { 
+        fontSize: 8,
+        cellPadding: 2, 
+        halign: 'center' 
+    },
     columnStyles: {
-      0: { fontStyle: 'bold' }
+      0: { fontStyle: 'bold', halign: 'left', cellWidth: 35 },
+      2: { cellWidth: 22 },
+      3: { cellWidth: 22 },
+      4: { cellWidth: 22 }
     }
   });
 
-  const pageCount = doc.getNumberOfPages();
-  doc.setFontSize(8);
-  for(let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.text('Gerado via Scout Basquete App', 14, doc.internal.pageSize.height - 10);
-  }
-
-  doc.save(`scout_basquete_${Date.now()}.pdf`);
-}
+  doc.save(`scout_completo_${new Date().getTime()}.pdf`);
+};
